@@ -43,9 +43,79 @@ body {
   min-height: 200px;
 }
 
-.pdf-embed, .pdf-iframe {
+
+/* PDF preview in main app */
+.pdf-iframe, .pdf-embed {
   width: 100%;
-  height: 80vh;
-  border: 1px solid #ccc;
+  height: 60vh;
+  border: none;
+  background: #f8f8f8;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-top: 1rem;
   border-radius: 6px;
 }
+
+/* Fullscreen PDF viewer mode */
+body.fullscreen-pdf, body.fullscreen-pdf #preview {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  background: #222;
+}
+body.fullscreen-pdf #preview {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+}
+body.fullscreen-pdf .pdf-iframe, body.fullscreen-pdf .pdf-embed {
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #222;
+}
+
+/* PDF.js scroll container + pages */
+.pdfjs-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.pdfjs-page {
+  background: #fff;
+  margin: 12px auto;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.pdfjs-text-content {
+  position: absolute;
+  left: -10000px; /* keep accessible but off-screen */
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+/* Controlled viewer */
+.pdfjs-viewer { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+.pdfjs-toolbar {
+  display: flex; gap: .5rem; align-items: center; padding: .5rem 1rem; border-bottom: 1px solid #444;
+  position: sticky; top: 0; background: #1e1e1e; z-index: 10;
+}
+.pdfjs-layout { display: grid; grid-template-columns: 180px 1fr; height: calc(100vh - 48px); }
+.pdfjs-thumbs { overflow: auto; border-right: 1px solid #444; padding: .5rem; }
+.pdfjs-thumb { display: block; width: 100%; padding: 0; margin: 0 0 .5rem 0; background: transparent; border: none; cursor: pointer; }
+.pdfjs-thumb.active { outline: 2px solid #4a90e2; }
+.pdfjs-pages { overflow: auto; padding: 1rem 0 1rem 1rem; display: flex; flex-direction: column; align-items: flex-start; }
+.pdfjs-pages > .pdfjs-page { max-width: 1100px; }

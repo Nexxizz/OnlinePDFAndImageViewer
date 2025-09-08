@@ -1,4 +1,5 @@
 import { previewPdf, clearPdf } from './viewers/pdf';
+import { renderPdfWithControls } from './viewers/pdfjsViewer';
 
 const fileInput = document.getElementById('file-input') as HTMLInputElement | null;
 const previewEl = document.getElementById('preview') as HTMLElement | null;
@@ -85,26 +86,27 @@ uploadBtn?.addEventListener('click', async () => {
       throw new Error(err.error || 'Upload failed');
     }
     const data = await res.json() as { url: string; filename: string };
-    const fullUrl = new URL(data.url, window.location.origin).toString();
+    // Extract the file id from the returned url (e.g., /files/abc123.pdf)
+    const match = data.url.match(/\/files\/(.+)$/);
+    const id = match ? match[1] : null;
+    if (!id) throw new Error('Invalid upload response');
+    const viewUrl = `/view/${id}`;
+    const fullViewUrl = new URL(viewUrl, window.location.origin).toString();
     if (shareEl) {
       shareEl.innerHTML = '';
       const a = document.createElement('a');
-      a.href = data.url; // Use proxy in dev; fullUrl is shown as text
+      a.href = viewUrl;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
-      a.textContent = 'Open uploaded PDF';
+      a.textContent = 'Open uploaded PDF in viewer';
       const p = document.createElement('p');
-      p.textContent = `Shareable link: ${fullUrl}`;
+      p.textContent = `Shareable link: ${fullViewUrl}`;
       shareEl.append(a, p);
     }
-    // Also update preview to load from the shareable link
+    // Update preview to load the raw PDF file to avoid nesting the entire site
     if (previewEl) {
-      previewEl.innerHTML = '';
-      const iframe = document.createElement('iframe');
-      iframe.src = data.url; // goes through Vite proxy during dev
-      iframe.className = 'pdf-iframe';
-      iframe.title = 'Uploaded PDF preview';
-      previewEl.appendChild(iframe);
+      // Use controlled viewer with thumbnails/navigation
+      await renderPdfWithControls({ url: data.url, container: previewEl, maxScale: 1.5 });
     }
   } catch (err) {
     console.error(err);

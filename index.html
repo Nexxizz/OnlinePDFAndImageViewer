@@ -7,26 +7,43 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <main class="container">
+    <!-- Main app UI (hidden on /view/*) -->
+    <main class="container" id="main-app">
       <h1>Online PDF & Image Viewer</h1>
-  <p class="hint">Upload a PDF to get a shareable link and preview it below.</p>
+      <p class="hint">Upload a PDF to get a shareable link and preview it below.</p>
 
       <div class="controls">
         <label for="file-input" class="sr-only">Choose a PDF file</label>
-  <input id="file-input" type="file" accept="application/pdf" />
-  <button id="upload-btn" type="button">Upload</button>
-  <button id="clear-btn" type="button">Clear</button>
+        <input id="file-input" type="file" accept="application/pdf" />
+        <button id="upload-btn" type="button">Upload</button>
+        <button id="clear-btn" type="button">Clear</button>
       </div>
 
       <div id="drop-zone" aria-label="Drop PDF file here" tabindex="0">
         Drag & drop a PDF here or use the file picker.
       </div>
 
-  <section id="share" aria-live="polite" aria-label="Shareable link area"></section>
-
-  <section id="preview" aria-live="polite" aria-label="File preview area"></section>
+      <section id="share" aria-live="polite" aria-label="Shareable link area"></section>
+      <section id="preview" aria-live="polite" aria-label="File preview area"></section>
     </main>
 
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module">
+      // SPA router: if path starts with /view/, load viewer-only mode
+      if (window.location.pathname.startsWith('/view/')) {
+        const mainApp = document.getElementById('main-app');
+        if (mainApp) mainApp.remove();
+        if (!document.getElementById('preview')) {
+          const section = document.createElement('section');
+          section.id = 'preview';
+          section.setAttribute('aria-live', 'polite');
+          section.setAttribute('aria-label', 'File preview area');
+          document.body.appendChild(section);
+        }
+        document.body.classList.add('fullscreen-pdf');
+        import('/src/viewPdf.ts');
+      } else {
+        import('/src/main.ts');
+      }
+    </script>
   </body>
-  </html>
+</html>
