@@ -71,7 +71,7 @@ body.fullscreen-pdf #preview {
   height: 100vh;
   margin: 0;
   padding: 0;
-  overflow: auto;
+  overflow: hidden; /* prevent outer scroll; inner viewer handles scrolling */
 }
 body.fullscreen-pdf .pdf-iframe, body.fullscreen-pdf .pdf-embed {
   width: 100vw;
@@ -108,14 +108,18 @@ body.fullscreen-pdf .pdf-iframe, body.fullscreen-pdf .pdf-embed {
 }
 
 /* Controlled viewer */
-.pdfjs-viewer { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+.pdfjs-viewer { display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
 .pdfjs-toolbar {
   display: flex; gap: .5rem; align-items: center; padding: .5rem 1rem; border-bottom: 1px solid #444;
   position: sticky; top: 0; background: #1e1e1e; z-index: 10;
 }
-.pdfjs-layout { display: grid; grid-template-columns: 180px 1fr; height: calc(100vh - 48px); }
+.pdfjs-layout { display: grid; grid-template-columns: 180px 1fr; height: calc(100vh - 48px); overflow: hidden; }
 .pdfjs-thumbs { overflow: auto; border-right: 1px solid #444; padding: .5rem; }
 .pdfjs-thumb { display: block; width: 100%; padding: 0; margin: 0 0 .5rem 0; background: transparent; border: none; cursor: pointer; }
 .pdfjs-thumb.active { outline: 2px solid #4a90e2; }
 .pdfjs-pages { overflow: auto; padding: 1rem 0 1rem 1rem; display: flex; flex-direction: column; align-items: flex-start; }
 .pdfjs-pages > .pdfjs-page { max-width: 1100px; }
+
+/* Semantic HTML mode: ensure the HTML content scrolls inside viewer, not body */
+.pdfjs-html { overflow: auto; height: 100%; padding: 1rem; }
+.pdfjs-html-hidden { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }

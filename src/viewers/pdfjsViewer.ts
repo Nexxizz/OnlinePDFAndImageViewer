@@ -100,6 +100,11 @@ export async function renderPdfWithControls(opts: PdfJsRenderOptions): Promise<P
     <input id="pdf-page-input" type="number" min="1" value="1" aria-label="Page number" data-testid="pdf-page-input" />
     <span id="pdf-page-count" aria-live="polite" data-testid="pdf-page-count">/ ?</span>
     <button id="pdf-next" aria-label="Next page" data-testid="pdf-next">Next</button>
+    <span style="flex:1"></span>
+    <label style="display:flex;align-items:center;gap:.4rem;">
+      <input type="checkbox" id="pdf-semantic-toggle" />
+      <span>Semantic HTML</span>
+    </label>
   `;
 
   // Layout: sidebar + pages
@@ -124,7 +129,7 @@ export async function renderPdfWithControls(opts: PdfJsRenderOptions): Promise<P
   const pageWrappers: HTMLElement[] = [];
   const textParts: string[] = [];
 
-  // Render pages and thumbnails
+  // Render pages and thumbnails (Canvas mode)
   for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const viewport = page.getViewport({ scale: 1 });
@@ -194,6 +199,8 @@ export async function renderPdfWithControls(opts: PdfJsRenderOptions): Promise<P
 
   // Navigation API
   let currentPage = 1;
+  let mode: 'canvas' | 'html' = 'canvas';
+  let htmlRoot: HTMLElement | null = null;
   function highlightThumb(n: number) {
     sidebar.querySelectorAll('.pdfjs-thumb.active').forEach(el => el.classList.remove('active'));
     const t = sidebar.querySelector(`.pdfjs-thumb[data-page="${n}"]`);
@@ -247,6 +254,188 @@ export async function renderPdfWithControls(opts: PdfJsRenderOptions): Promise<P
   const hashPage = Number((urlObj.hash.match(/page=(\d+)/) || [])[1] || urlObj.searchParams.get('page'));
   if (!Number.isNaN(hashPage) && hashPage >= 1) goToPage(hashPage); else goToPage(1);
 
+  // Build Semantic HTML view on demand
+  async function buildSemanticHtml(): Promise<HTMLElement> {
+    const root = document.createElement('div');
+    root.className = 'pdfjs-html';
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const text = await page.getTextContent();
+      type Item = { str: string; transform: number[] };
+      const items = text.items as unknown as Item[];
+      // Map to positioned items
+      const positioned = items.map((i) => {
+        const [a, b, c, d, e, f] = i.transform;
+        const x = e;
+        const y = f;
+        const scaleY = Math.hypot(c, d) || Math.abs(d) || 1; // rough font size proxy
+        return { str: i.str, x, y, size: scaleY };
+      });
+      // Group by Y (lines)
+      const tol = 4; // px tolerance
+      positioned.sort((p1, p2) => p2.y - p1.y || p1.x - p2.x);
+      const lines: { y: number; sizeAvg: number; parts: { x: number; str: string }[] }[] = [];
+      for (const it of positioned) {
+        let line = lines.find(l => Math.abs(l.y - it.y) <= tol);
+        if (!line) {
+          line = { y: it.y, sizeAvg: it.size, parts: [] };
+          lines.push(line);
+        } else {
+          line.sizeAvg = (line.sizeAvg + it.size) / 2;
+        }
+        line.parts.push({ x: it.x, str: it.str });
+      }
+      // Sort lines top-to-bottom and parts left-to-right
+      lines.sort((a, b) => b.y - a.y);
+      const sizes = lines.map(l => l.sizeAvg).filter(n => Number.isFinite(n) && n > 0);
+      const median = (() => {
+        if (!sizes.length) return 12;
+        const s = [...sizes].sort((a, b) => a - b);
+        const mid = Math.floor(s.length / 2);
+        return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+      })();
+      // Table detection helpers
+      const roundX = (x: number) => Math.round(x / 20) * 20;
+      const sameCols = (a: number[], b: number[]) => {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 20) return false;
+        return true;
+      };
+      let i = 0;
+      while (i < lines.length) {
+        const l = lines[i];
+        l.parts.sort((a, b) => a.x - b.x);
+        const xs = l.parts.map(p => roundX(p.x));
+        const asText = l.parts.map(p => p.str);
+        const isTableCandidate = l.parts.length >= 3;
+        if (!isTableCandidate) {
+          const textLine = asText.join('').replace(/\s{2,}/g, ' ').trim();
+          if (textLine) {
+            const ratio = l.sizeAvg / (median || 12);
+            let el: HTMLElement;
+            if (ratio > 1.6) el = document.createElement('h1');
+            else if (ratio > 1.35) el = document.createElement('h2');
+            else if (ratio > 1.2) el = document.createElement('h3');
+            else {
+              // bullets → list
+              if (/^([\u2022\-\*])\s/.test(textLine)) {
+                const ul = document.createElement('ul');
+                const li = document.createElement('li');
+                li.textContent = textLine.replace(/^([\u2022\-\*])\s/, '');
+                ul.appendChild(li);
+                root.appendChild(ul);
+                i++;
+                continue;
+              }
+              el = document.createElement('p');
+            }
+            el.textContent = textLine;
+            root.appendChild(el);
+          }
+          i++;
+          continue;
+        }
+        // Try to accumulate a table block with stable columns
+        const baseCols = xs;
+        const rows: string[][] = [asText];
+        let j = i + 1;
+        for (; j < lines.length; j++) {
+          const ln = lines[j];
+          ln.parts.sort((a, b) => a.x - b.x);
+          const cols = ln.parts.map(p => roundX(p.x));
+          if (!sameCols(baseCols, cols)) break;
+          rows.push(ln.parts.map(p => p.str));
+        }
+        if (rows.length >= 3) {
+          const table = document.createElement('table');
+          table.className = 'pdfjs-html-table';
+          const tbody = document.createElement('tbody');
+          // Use first row as header if text seems like labels (all non-numeric tokens)
+          const headerLike = rows[0].every(cell => /[A-Za-z]/.test(cell) && !/^\d+[\d\s.,-]*$/.test(cell));
+          if (headerLike) {
+            const thead = document.createElement('thead');
+            const tr = document.createElement('tr');
+            rows[0].forEach(c => { const th = document.createElement('th'); th.textContent = c.trim(); tr.appendChild(th); });
+            thead.appendChild(tr);
+            table.appendChild(thead);
+            rows.slice(1).forEach(r => {
+              const trb = document.createElement('tr');
+              r.forEach(c => { const td = document.createElement('td'); td.textContent = c.trim(); trb.appendChild(td); });
+              tbody.appendChild(trb);
+            });
+          } else {
+            rows.forEach(r => {
+              const trb = document.createElement('tr');
+              r.forEach(c => { const td = document.createElement('td'); td.textContent = c.trim(); trb.appendChild(td); });
+              tbody.appendChild(trb);
+            });
+          }
+          table.appendChild(tbody);
+          root.appendChild(table);
+          i = j;
+        } else {
+          // Not enough stable rows; fallback to paragraph
+          const textLine = asText.join('').replace(/\s{2,}/g, ' ').trim();
+          if (textLine) {
+            const p = document.createElement('p');
+            p.textContent = textLine;
+            root.appendChild(p);
+          }
+          i++;
+        }
+      }
+      if (pageNum < pageCount) {
+        const hr = document.createElement('hr');
+        hr.className = 'pdfjs-html-sep';
+        root.appendChild(hr);
+      }
+    }
+    return root;
+  }
+
+  async function switchToHtml() {
+    if (mode === 'html') return;
+    mode = 'html';
+    // Clear canvas layout
+  pages.replaceChildren();
+  sidebar.replaceChildren();
+  // Hide sidebar to give semantic HTML full width
+  (sidebar as HTMLElement).style.display = 'none';
+  htmlRoot = await buildSemanticHtml();
+  // Make sure semantic HTML takes the full grid width
+  htmlRoot.style.gridColumn = '1 / -1';
+  // Replace the pages panel with the semantic HTML so it sits in the main area
+  layout.replaceChild(htmlRoot, pages);
+  }
+
+  function switchToCanvas() {
+    if (mode === 'canvas') return;
+    mode = 'canvas';
+  if (htmlRoot && htmlRoot.parentElement) htmlRoot.parentElement.removeChild(htmlRoot);
+  // Restore sidebar visibility
+  (sidebar as HTMLElement).style.display = '';
+  // Re-render by refreshing the page (simpler for now)
+  // In-app re-rendering would require caching; we opt for a soft reload.
+  location.reload();
+  }
+
+  (document.getElementById('pdf-semantic-toggle') as HTMLInputElement | null)?.addEventListener('change', (e) => {
+    const on = (e.currentTarget as HTMLInputElement).checked;
+    if (on) switchToHtml(); else switchToCanvas();
+  });
+
+  // Always build a hidden semantic HTML block for machines (even in canvas mode)
+  (async () => {
+    try {
+      const hidden = await buildSemanticHtml();
+      hidden.classList.add('pdfjs-html-hidden');
+      hidden.id = 'pdf-semantic-hidden';
+      container.appendChild(hidden);
+    } catch (err) {
+      // no-op
+    }
+  })();
+
   // Expose machine-controllable API
   const api = {
     goToPage,
@@ -255,6 +444,17 @@ export async function renderPdfWithControls(opts: PdfJsRenderOptions): Promise<P
     getCurrentPage: () => currentPage,
     getPageCount: () => pageCount,
     getAllText: () => sr.textContent || '',
+    getHiddenSemanticHTML: () => {
+      const el = document.getElementById('pdf-semantic-hidden');
+      return el ? (el as HTMLElement).innerHTML : '';
+    },
+    getSemanticHTML: async () => {
+      if (mode === 'html' && htmlRoot) return htmlRoot.innerHTML;
+      const tmp = await buildSemanticHtml();
+      const html = tmp.innerHTML;
+      tmp.remove();
+      return html;
+    },
   };
   (window as any).pdfViewer = api;
 
