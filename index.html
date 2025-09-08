@@ -9,19 +9,22 @@
   <body>
     <main class="container">
       <h1>Online PDF & Image Viewer</h1>
-      <p class="hint">Phase 1: PDF preview. Select a PDF file to preview it below.</p>
+  <p class="hint">Upload a PDF to get a shareable link and preview it below.</p>
 
       <div class="controls">
         <label for="file-input" class="sr-only">Choose a PDF file</label>
-        <input id="file-input" type="file" accept="application/pdf" />
-        <button id="clear-btn" type="button">Clear</button>
+  <input id="file-input" type="file" accept="application/pdf" />
+  <button id="upload-btn" type="button">Upload</button>
+  <button id="clear-btn" type="button">Clear</button>
       </div>
 
       <div id="drop-zone" aria-label="Drop PDF file here" tabindex="0">
         Drag & drop a PDF here or use the file picker.
       </div>
 
-      <section id="preview" aria-live="polite" aria-label="File preview area"></section>
+  <section id="share" aria-live="polite" aria-label="Shareable link area"></section>
+
+  <section id="preview" aria-live="polite" aria-label="File preview area"></section>
     </main>
 
     <script type="module" src="/src/main.ts"></script>
